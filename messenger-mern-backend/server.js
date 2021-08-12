@@ -10,9 +10,16 @@ import mongoMessages from "./messageModel.js";
 const app = express();
 const port = process.env.PORT || 9000;
 
+const pusher = new Pusher({
+  appId: "1249316",
+  key: "43d12869c31e9d1f2d29",
+  secret: "a8ece3fcd33746dabf84",
+  cluster: "eu",
+  useTLS: true
+});
 /* middlewares */
-app.use(express.json())
-app.use(cors())
+app.use(express.json());
+app.use(cors());
 
 /* db config */
 const mongoURI =
@@ -25,14 +32,21 @@ mongoose.connect(mongoURI, {
 
 mongoose.connection.once("open", () => {
   console.log("DB CONNECTED");
+  
+  const changeStream =mongoose.connection.collection('messages').watch()
+  changeStream.on('change', (change) =>{
+    pusher.trigger('messages', 'newMessage',{
+      'change': change 
+    })
+  })
 });
 
 /* api routes */
- app.get('/', (req, res) => res.status(200).send("hello world")); 
+app.get("/", (req, res) => res.status(200).send("hello world"));
 
-app.post('/save/message', (req, res) => {
+app.post("/save/message", (req, res) => {
   const dbMessage = req.body;
- 
+
   mongoMessages.create(dbMessage, (err, data) => {
     if (err) {
       res.status(500).send(err);
@@ -42,15 +56,18 @@ app.post('/save/message', (req, res) => {
   });
 });
 
-app.get('/retrieve/conversation', (req,res)=>{
-    mongoMessages.find((err,data) =>{
-        if (err) {
-            res.status(500).send(err);
-          } else {
-            res.status(200).send(data);
-          }
-    })
-})
+app.get("/retrieve/conversation", (req, res) => {
+  mongoMessages.find((err, data) => {
+    if (err) {
+      res.status(500).send(err);
+    } else {
+      data.sort((b, a) => {
+        return a.timestamp - b.timestamp;
+      });
+      res.status(200).send(data);
+    }
+  });
+});
 
 /* listen */
 app.listen(port, () => console.log(`listenin on localhost ${port}`));
